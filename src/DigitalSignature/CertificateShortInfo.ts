@@ -1,3 +1,8 @@
+/**
+ * Краткая информация о сертификате.
+ * Данную модель пришлось вводить для того, чтобы унифицировать модель сертификата,
+ * т.к. в синхронной и асинхронной версии cadesplugin модель сертификата отличается
+ */
 export default interface CertificateShortInfo {
   readonly version: number;
   readonly thumbprint: string;

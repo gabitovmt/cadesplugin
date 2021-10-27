@@ -1,6 +1,6 @@
 import React, {useState} from 'react';
 import './App.css';
-import DigitalSignatureProvider from "./DigitalSignature/DigitalSignatureProvider";
+import DigitalSignatureProvider from "./DigitalSignature";
 import CertificateShortInfo from "./DigitalSignature/CertificateShortInfo";
 
 function App() {
