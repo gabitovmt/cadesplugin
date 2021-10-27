@@ -1,24 +1,25 @@
-import React from 'react';
-import logo from './logo.svg';
+import React, {useState} from 'react';
 import './App.css';
 
 function App() {
+  const [ sourceFile, setSourceFile ] = useState<File | undefined>();
+
+  const sourceFileChangeHandler = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files != null && event.target.files.length === 1) {
+      setSourceFile(event.target.files[0]);
+    } else {
+      setSourceFile(undefined);
+    }
+  }
+
+  const signButtonClickHandler = () => {
+    console.log('test');
+  }
+
   return (
     <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+      <input type="file" onChange={sourceFileChangeHandler} />
+      <button type="button" disabled={sourceFile == null} onClick={signButtonClickHandler}>Подписать</button>
     </div>
   );
 }
