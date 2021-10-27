@@ -10,10 +10,10 @@
     var plugin_resolve;
     var isOpera = 0;
     var isFireFox = 0;
-	var isEdge = 0;
+	  var isEdge = 0;
     var failed_extensions = 0;
 
-    var canPromise = false;
+    var canPromise = !!window.Promise;
     var cadesplugin;
 
     if(canPromise)

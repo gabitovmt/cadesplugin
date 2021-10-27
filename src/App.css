@@ -1,3 +1,13 @@
 .App {
   padding: 20px;
+  display: grid;
+  grid-template: "sign-panel certificates-panel";
+}
+
+.App__sign-panel {
+  grid-area: sign-panel;
+}
+
+.App__certificates-panel {
+  grid-area: certificates-panel;
 }
