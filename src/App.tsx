@@ -1,5 +1,6 @@
 import React, {useState} from 'react';
 import './App.css';
+import DigitalSignatureProvider from "./digital-signature-provider";
 
 function App() {
   const [ sourceFile, setSourceFile ] = useState<File | undefined>();
@@ -13,6 +14,7 @@ function App() {
   }
 
   const signButtonClickHandler = () => {
+    DigitalSignatureProvider.new();
     console.log('test');
   }
 
