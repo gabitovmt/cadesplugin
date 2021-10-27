@@ -3,7 +3,7 @@ import CapicomCertInfoType from "./CapicomCertInfoType";
 import DigitalSignatureProvider from "./DigitalSignatureProvider";
 
 export default class DigitalSignatureSyncProvider extends DigitalSignatureProvider {
-  constructor(private readonly cadesplugin: CADESPluginSync) {
+  public constructor(private readonly cadesplugin: CADESPluginSync) {
     super();
   }
 

@@ -52,4 +52,45 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
   private infoType(infoType: any): CAPICOM.CAPICOM_CERT_INFO_TYPE {
     return infoType as CAPICOM.CAPICOM_CERT_INFO_TYPE;
   }
+
+
+  public async signCreate(certSubjectName: string, file: File): Promise<File> {
+    const certificate: CAPICOM.CertificateAsync = await this.certificateBySubjectName(certSubjectName);
+
+    const signer: CAdESCOM.CPSignerAsync = await this.cadesplugin.CreateObjectAsync('CAdESCOM.CPSigner');
+    await signer.propset_Certificate(certificate);
+    await signer.propset_CheckCertificate(true);
+    await signer.propset_TSAAddress('http://cryptopro.ru/tsp/');
+
+    const signedData: CAdESCOM.CadesSignedDataAsync =
+      await this.cadesplugin.CreateObjectAsync('CAdESCOM.CadesSignedData');
+    await signedData.propset_Content(await file.text());
+
+    return await signedData.SignCades(signer, 0x5d) as any as File;
+  }
+
+  private async certificateBySubjectName(subjectName: string): Promise<CAPICOM.CertificateAsync> {
+    const store = await this.cadesplugin.CreateObjectAsync('CAdESCOM.Store');
+
+    try {
+      await store.Open(
+        this.cadesplugin.CAPICOM_CURRENT_USER_STORE,
+        this.cadesplugin.CAPICOM_MY_STORE,
+        this.cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED
+      );
+
+      const allCertificates = await store.Certificates;
+      const certificates = await allCertificates.Find(0, subjectName);
+      const count = await certificates.Count;
+      if (count === 0) {
+        throw new TypeError(`Сертификат "${subjectName}" не найден`);
+      } else if (count > 1) {
+        throw new TypeError(`Найдено более одного сертификата "${subjectName}"`);
+      }
+
+      return certificates.Item(1);
+    } finally {
+      // await store.Close();
+    }
+  }
 }
