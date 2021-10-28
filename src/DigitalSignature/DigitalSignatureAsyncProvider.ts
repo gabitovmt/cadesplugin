@@ -2,34 +2,92 @@ import CertificateShortInfo from "./CertificateShortInfo";
 import CapicomCertInfoType from "./CapicomCertInfoType";
 import DigitalSignatureProvider from "./DigitalSignatureProvider";
 
+type StoreAsync = CAPICOM.StoreAsync;
+type CertificatesAsync = CAPICOM.CertificatesAsync;
+type CertificateAsync = CAPICOM.CertificateAsync;
+type CPSignerAsync = CAdESCOM.CPSignerAsync;
+type CadesSignedDataAsync = CAdESCOM.CadesSignedDataAsync;
+
 export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvider {
   public constructor(private readonly cadesplugin: CADESPluginAsync) {
     super();
   }
 
   public async certificates(): Promise<CertificateShortInfo[]> {
-    const store = await this.cadesplugin.CreateObjectAsync('CAdESCOM.Store');
+    const store = await this.store();
 
     try {
-      await store.Open(
-        this.cadesplugin.CAPICOM_CURRENT_USER_STORE,
-        this.cadesplugin.CAPICOM_MY_STORE,
-        this.cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED
-      );
+      await this.openStore(store);
 
-      const certificates = await store.Certificates;
-      const result: CertificateShortInfo[] = [];
-      for (let index = 1, count = await certificates.Count; index <= count; index++) {
-        result.push(await this.certificateShortInfo(await certificates.Item(index)));
+      const certificates: CertificateShortInfo[] = [];
+      for (let cert of await this.findAllCertificates(store)) {
+        certificates.push(await this.certificateShortInfo(cert));
       }
 
-      return result;
+      return certificates;
     } finally {
-      await store.Close();
+      await this.closeStore(store);
     }
   }
 
-  private async certificateShortInfo(cert: CAPICOM.CertificateAsync): Promise<CertificateShortInfo> {
+  public async signCreate(thumbprint: string, file: File): Promise<File> {
+    const store = await this.store();
+
+    try {
+      await this.openStore(store);
+
+      const certificate: CertificateAsync = await this.findCertificateByThumbprint(store, thumbprint);
+      const signer: CPSignerAsync = await this.signer(certificate);
+      const signedContent = await this.signContent(signer, await file.text());
+
+      return new File([signedContent], file.name);
+    } finally {
+      await this.closeStore(store);
+    }
+  }
+
+  private async store(): Promise<StoreAsync> {
+    return await this.cadesplugin.CreateObjectAsync('CAdESCOM.Store');
+  }
+
+  private async openStore(store: StoreAsync): Promise<void> {
+    await store.Open(
+      this.cadesplugin.CAPICOM_CURRENT_USER_STORE,
+      this.cadesplugin.CAPICOM_MY_STORE,
+      this.cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED
+    );
+  }
+
+  private async closeStore(store: StoreAsync): Promise<void> {
+    await store.Close();
+  }
+
+  private async findAllCertificates(store: StoreAsync): Promise<CertificateAsync[]> {
+    const storeCertificates: CertificatesAsync = await store.Certificates;
+    const certificates: CertificateAsync[] = [];
+    for (let index = 1, count = await storeCertificates.Count; index <= count; index++) {
+      certificates.push(await storeCertificates.Item(index));
+    }
+
+    return certificates;
+  }
+
+  private async findCertificateByThumbprint(store: StoreAsync, thumbprint: string): Promise<CertificateAsync> {
+    const CAPICOM_CERTIFICATE_FIND_SHA1_HASH = 0;
+    const certificates: CertificatesAsync =
+      await (await store.Certificates).Find(CAPICOM_CERTIFICATE_FIND_SHA1_HASH, thumbprint);
+
+    const count = await certificates.Count;
+    if (count === 0) {
+      throw new TypeError(`Сертификат "${thumbprint}" не найден`);
+    } else if (count > 1) {
+      throw new TypeError(`Найдено более одного сертификата "${thumbprint}"`);
+    }
+
+    return certificates.Item(1);
+  }
+
+  private async certificateShortInfo(cert: CertificateAsync): Promise<CertificateShortInfo> {
     return {
       version: await cert.Version,
       thumbprint: await cert.Thumbprint,
@@ -53,44 +111,24 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
     return infoType as CAPICOM.CAPICOM_CERT_INFO_TYPE;
   }
 
-
-  public async signCreate(certSubjectName: string, file: File): Promise<File> {
-    const certificate: CAPICOM.CertificateAsync = await this.certificateBySubjectName(certSubjectName);
-
-    const signer: CAdESCOM.CPSignerAsync = await this.cadesplugin.CreateObjectAsync('CAdESCOM.CPSigner');
+  private async signer(certificate: CertificateAsync): Promise<CPSignerAsync> {
+    const signer: CPSignerAsync = await this.cadesplugin.CreateObjectAsync('CAdESCOM.CPSigner');
     await signer.propset_Certificate(certificate);
     await signer.propset_CheckCertificate(true);
     await signer.propset_TSAAddress('http://cryptopro.ru/tsp/');
 
-    const signedData: CAdESCOM.CadesSignedDataAsync =
-      await this.cadesplugin.CreateObjectAsync('CAdESCOM.CadesSignedData');
-    await signedData.propset_Content(await file.text());
-
-    return await signedData.SignCades(signer, 0x5d) as any as File;
+    return signer;
   }
 
-  private async certificateBySubjectName(subjectName: string): Promise<CAPICOM.CertificateAsync> {
-    const store = await this.cadesplugin.CreateObjectAsync('CAdESCOM.Store');
+  private async signContent(signer: CPSignerAsync, content: string): Promise<string> {
+    const signedData: CadesSignedDataAsync =
+      await this.cadesplugin.CreateObjectAsync('CAdESCOM.CadesSignedData');
+    await signedData.propset_Content(btoa(content));
 
-    try {
-      await store.Open(
-        this.cadesplugin.CAPICOM_CURRENT_USER_STORE,
-        this.cadesplugin.CAPICOM_MY_STORE,
-        this.cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED
-      );
+    const CADESCOM_CADES_BES = 1;
+    const detached = true;
+    const signedContent = await signedData.SignCades(signer, CADESCOM_CADES_BES, detached);
 
-      const allCertificates = await store.Certificates;
-      const certificates = await allCertificates.Find(0, subjectName);
-      const count = await certificates.Count;
-      if (count === 0) {
-        throw new TypeError(`Сертификат "${subjectName}" не найден`);
-      } else if (count > 1) {
-        throw new TypeError(`Найдено более одного сертификата "${subjectName}"`);
-      }
-
-      return certificates.Item(1);
-    } finally {
-      // await store.Close();
-    }
+    return atob(signedContent);
   }
 }

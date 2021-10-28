@@ -24,11 +24,11 @@ export default class DigitalSignatureProvider {
   /**
    * Подписать файл
    *
-   * @param certSubjectName Имя сертификата, с помощью которого подписываем файл
-   * @param file            Подписываемый файл
-   * @return                Файл с прикреплённой подписью
+   * @param thumbprint  Отпечаток сертификата, с помощью которого подписываем файл
+   * @param file        Подписываемый файл
+   * @return            Файл с прикреплённой подписью
    */
-  async signCreate(certSubjectName: string, file: File): Promise<File> {
+  async signCreate(thumbprint: string, file: File): Promise<File> {
     throw new TypeError('Method is not implemented');
   }
 
