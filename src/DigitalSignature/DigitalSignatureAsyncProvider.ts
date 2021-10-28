@@ -40,7 +40,7 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
       const signer: CPSignerAsync = await this.signer(certificate);
       const signedContent = await this.signContent(signer, await file.text());
 
-      return new File([signedContent], `${file.name}.p7s`);
+      return new File([signedContent], `${file.name}.sig`);
     } finally {
       await this.closeStore(store);
     }
