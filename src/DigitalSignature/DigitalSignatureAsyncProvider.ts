@@ -37,11 +37,10 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
       await this.openStore(store);
 
       const certificate: CertificateAsync = await this.findCertificateByThumbprint(store, thumbprint);
+      const signer: CPSignerAsync = await this.signer(certificate);
 
-      const t = await SignCadesBES_Async_File(certificate, btoa(await file.text()));
+      const t = await SignCadesBES_Async_File(signer, btoa(await file.text()));
       return new File([t], `${file.name}.p7s`);
-
-      // const signer: CPSignerAsync = await this.signer(certificate);
       // const signedContent = await this.signContent(signer, await file.text());
       //
       // return new File([signedContent], `${file.name}.p7s`);
@@ -121,15 +120,11 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
     const signingTimeAttr = await this.cadesplugin.CreateObjectAsync("CAdESCOM.CPAttribute");
     await signingTimeAttr.propset_Name(this.cadesplugin.CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME);
     await signingTimeAttr.propset_Value(new Date());
-
-
-    debugger
     // @ts-ignore
     await (await signer.AuthenticatedAttributes2).Add(signingTimeAttr);
 
     await signer.propset_Certificate(certificate);
-    // await signer.propset_CheckCertificate(true);
-    // await signer.propset_TSAAddress('http://cryptopro.ru/tsp/');
+    await signer.propset_Options(this.cadesplugin.CAPICOM_CERTIFICATE_INCLUDE_WHOLE_CHAIN);
 
     return signer;
   }
@@ -150,31 +145,11 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
 }
 
 
-function SignCadesBES_Async_File(certificate: any, fileContent: any): Promise<string> {
+function SignCadesBES_Async_File(oSigner: any, fileContent: any): Promise<string> {
   return new Promise((resolve, reject) => {
     cadesplugin.async_spawn(function*() {
       var Signature;
       var detached=false;
-      // @ts-ignore
-      var oSigner = yield cadesplugin.CreateObjectAsync("CAdESCOM.CPSigner");
-      // @ts-ignore
-      var oSigningTimeAttr = yield cadesplugin.CreateObjectAsync("CADESCOM.CPAttribute");
-      var CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME = 0;
-      // @ts-ignore
-      yield oSigningTimeAttr.propset_Name(CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME);
-      var oTimeNow = new Date();
-      // @ts-ignore
-      yield oSigningTimeAttr.propset_Value(oTimeNow);
-      // @ts-ignore
-      var attr = yield oSigner.AuthenticatedAttributes2;
-
-      // @ts-ignore
-      yield attr.Add(oSigningTimeAttr);
-      // @ts-ignore
-      yield oSigner.propset_Certificate(certificate)
-      // @ts-ignore
-      yield oSigner.propset_Options(1); //CAPICOM_CERTIFICATE_INCLUDE_WHOLE_CHAIN
-
       // @ts-ignore
       var oSignedData = yield cadesplugin.CreateObjectAsync("CAdESCOM.CadesSignedData");
       // @ts-ignore
