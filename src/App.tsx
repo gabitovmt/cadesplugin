@@ -2,6 +2,7 @@ import React, {useState} from 'react';
 import './App.css';
 import DigitalSignatureProvider from "./DigitalSignature";
 import CertificateShortInfo from "./DigitalSignature/CertificateShortInfo";
+import FileSaver from "file-saver";
 
 function App() {
   const [ sourceFile, setSourceFile ] = useState<File | undefined>();
@@ -24,10 +25,13 @@ function App() {
     setChosenCertificate(event.target.value);
   }
 
-  const signFile = () => {
-    if (chosenCertificate != null && sourceFile != null) {
-      console.log(DigitalSignatureProvider.new().signCreate(chosenCertificate, sourceFile));
+  const signFile = async () => {
+    if (chosenCertificate == null || sourceFile == null) {
+      return;
     }
+
+    const file: File = await DigitalSignatureProvider.new().signCreate(chosenCertificate, sourceFile);
+    FileSaver.saveAs(file);
   }
 
   function renderChooseSigningFile(): JSX.Element {

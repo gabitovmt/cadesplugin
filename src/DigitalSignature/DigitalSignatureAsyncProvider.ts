@@ -37,10 +37,14 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
       await this.openStore(store);
 
       const certificate: CertificateAsync = await this.findCertificateByThumbprint(store, thumbprint);
-      const signer: CPSignerAsync = await this.signer(certificate);
-      const signedContent = await this.signContent(signer, await file.text());
 
-      return new File([signedContent], file.name);
+      const t = await SignCadesBES_Async_File(certificate, btoa(await file.text()));
+      return new File([t], `${file.name}.p7s`);
+
+      // const signer: CPSignerAsync = await this.signer(certificate);
+      // const signedContent = await this.signContent(signer, await file.text());
+      //
+      // return new File([signedContent], `${file.name}.p7s`);
     } finally {
       await this.closeStore(store);
     }
@@ -113,22 +117,76 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
 
   private async signer(certificate: CertificateAsync): Promise<CPSignerAsync> {
     const signer: CPSignerAsync = await this.cadesplugin.CreateObjectAsync('CAdESCOM.CPSigner');
+
+    const signingTimeAttr = await this.cadesplugin.CreateObjectAsync("CAdESCOM.CPAttribute");
+    await signingTimeAttr.propset_Name(this.cadesplugin.CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME);
+    await signingTimeAttr.propset_Value(new Date());
+
+
+    debugger
+    // @ts-ignore
+    await (await signer.AuthenticatedAttributes2).Add(signingTimeAttr);
+
     await signer.propset_Certificate(certificate);
-    await signer.propset_CheckCertificate(true);
-    await signer.propset_TSAAddress('http://cryptopro.ru/tsp/');
+    // await signer.propset_CheckCertificate(true);
+    // await signer.propset_TSAAddress('http://cryptopro.ru/tsp/');
 
     return signer;
   }
 
   private async signContent(signer: CPSignerAsync, content: string): Promise<string> {
+    console.log(btoa(content));
     const signedData: CadesSignedDataAsync =
       await this.cadesplugin.CreateObjectAsync('CAdESCOM.CadesSignedData');
+    await signedData.propset_ContentEncoding(this.cadesplugin.CADESCOM_BASE64_TO_BINARY);
     await signedData.propset_Content(btoa(content));
+    await signer.propset_Options(this.cadesplugin.CAPICOM_CERTIFICATE_INCLUDE_WHOLE_CHAIN);
 
-    const CADESCOM_CADES_BES = 1;
-    const detached = true;
-    const signedContent = await signedData.SignCades(signer, CADESCOM_CADES_BES, detached);
+    const detached = false;
+    const signedContent = await signedData.SignCades(signer, this.cadesplugin.CADESCOM_CADES_BES, detached);
 
     return atob(signedContent);
   }
+}
+
+
+function SignCadesBES_Async_File(certificate: any, fileContent: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cadesplugin.async_spawn(function*() {
+      var Signature;
+      var detached=false;
+      // @ts-ignore
+      var oSigner = yield cadesplugin.CreateObjectAsync("CAdESCOM.CPSigner");
+      // @ts-ignore
+      var oSigningTimeAttr = yield cadesplugin.CreateObjectAsync("CADESCOM.CPAttribute");
+      var CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME = 0;
+      // @ts-ignore
+      yield oSigningTimeAttr.propset_Name(CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME);
+      var oTimeNow = new Date();
+      // @ts-ignore
+      yield oSigningTimeAttr.propset_Value(oTimeNow);
+      // @ts-ignore
+      var attr = yield oSigner.AuthenticatedAttributes2;
+
+      // @ts-ignore
+      yield attr.Add(oSigningTimeAttr);
+      // @ts-ignore
+      yield oSigner.propset_Certificate(certificate)
+      // @ts-ignore
+      yield oSigner.propset_Options(1); //CAPICOM_CERTIFICATE_INCLUDE_WHOLE_CHAIN
+
+      // @ts-ignore
+      var oSignedData = yield cadesplugin.CreateObjectAsync("CAdESCOM.CadesSignedData");
+      // @ts-ignore
+      yield oSignedData.propset_ContentEncoding(1); //CADESCOM_BASE64_TO_BINARY
+      var dataToSign = fileContent;
+      // @ts-ignore
+      yield oSignedData.propset_Content(dataToSign);
+      var CADES_BES = 1;
+      // @ts-ignore
+      Signature = yield oSignedData.SignCades(oSigner, CADES_BES,detached);
+      // @ts-ignore
+      resolve(Signature);
+    });
+  });
 }
