@@ -38,12 +38,9 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
 
       const certificate: CertificateAsync = await this.findCertificateByThumbprint(store, thumbprint);
       const signer: CPSignerAsync = await this.signer(certificate);
+      const signedContent = await this.signContent(signer, await file.text());
 
-      const t = await SignCadesBES_Async_File(signer, btoa(await file.text()));
-      return new File([t], `${file.name}.p7s`);
-      // const signedContent = await this.signContent(signer, await file.text());
-      //
-      // return new File([signedContent], `${file.name}.p7s`);
+      return new File([signedContent], `${file.name}.p7s`);
     } finally {
       await this.closeStore(store);
     }
@@ -130,38 +127,12 @@ export default class DigitalSignatureAsyncProvider extends DigitalSignatureProvi
   }
 
   private async signContent(signer: CPSignerAsync, content: string): Promise<string> {
-    console.log(btoa(content));
     const signedData: CadesSignedDataAsync =
       await this.cadesplugin.CreateObjectAsync('CAdESCOM.CadesSignedData');
     await signedData.propset_ContentEncoding(this.cadesplugin.CADESCOM_BASE64_TO_BINARY);
     await signedData.propset_Content(btoa(content));
-    await signer.propset_Options(this.cadesplugin.CAPICOM_CERTIFICATE_INCLUDE_WHOLE_CHAIN);
 
     const detached = false;
-    const signedContent = await signedData.SignCades(signer, this.cadesplugin.CADESCOM_CADES_BES, detached);
-
-    return atob(signedContent);
+    return await signedData.SignCades(signer, this.cadesplugin.CADESCOM_CADES_BES, detached);
   }
-}
-
-
-function SignCadesBES_Async_File(oSigner: any, fileContent: any): Promise<string> {
-  return new Promise((resolve, reject) => {
-    cadesplugin.async_spawn(function*() {
-      var Signature;
-      var detached=false;
-      // @ts-ignore
-      var oSignedData = yield cadesplugin.CreateObjectAsync("CAdESCOM.CadesSignedData");
-      // @ts-ignore
-      yield oSignedData.propset_ContentEncoding(1); //CADESCOM_BASE64_TO_BINARY
-      var dataToSign = fileContent;
-      // @ts-ignore
-      yield oSignedData.propset_Content(dataToSign);
-      var CADES_BES = 1;
-      // @ts-ignore
-      Signature = yield oSignedData.SignCades(oSigner, CADES_BES,detached);
-      // @ts-ignore
-      resolve(Signature);
-    });
-  });
 }
