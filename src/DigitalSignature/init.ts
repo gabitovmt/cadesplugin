@@ -1,12 +1,15 @@
+/* eslint-disable no-undef */
+
 import 'cadesplugin/cadesplugin_api';
-import DigitalSignatureAsyncProvider from "./DigitalSignatureAsyncProvider";
-import DigitalSignatureSyncProvider from "./DigitalSignatureSyncProvider";
-import DigitalSignatureProvider from "./DigitalSignatureProvider";
+import DigitalSignatureAsyncProvider from './DigitalSignatureAsyncProvider';
+import DigitalSignatureSyncProvider from './DigitalSignatureSyncProvider';
+import DigitalSignatureProvider from './DigitalSignatureProvider';
+import RuError from '../utils/RuError';
 
 /**
  * cadesplugin загружается в глобальную область видимости
  */
-declare var cadesplugin: Promise<any>;
+declare let cadesplugin: Promise<any>;
 
 /**
  * Пробуем получить cadesplugin
@@ -16,34 +19,35 @@ function init(): void {
   if (canPromise) {
     cadesplugin.then(
       () => main(),
-      e => console.error(e)
+      (e) => { throw e; },
     );
   } else {
-    window.addEventListener("message", cadespluginMessageListener, false);
-    window.postMessage("cadesplugin_echo_request", "*");
+    window.addEventListener('message', cadesPluginMessageListener, false);
+    window.postMessage('cadesplugin_echo_request', '*');
   }
 }
 
 /**
  * Если браузер не поддерживает Promise, то вынуждены получить синхронную версию cadesplugin
  */
-function cadespluginMessageListener(event: MessageEvent<any>) {
+function cadesPluginMessageListener(event: MessageEvent) {
   if (event.data === 'cadesplugin_loaded') {
     main();
-    window.removeEventListener('message', cadespluginMessageListener);
+    window.removeEventListener('message', cadesPluginMessageListener);
   } else if (event.data === 'cadesplugin_load_error') {
-    console.error('Cannot load plugin.');
-    window.removeEventListener('message', cadespluginMessageListener);
+    window.removeEventListener('message', cadesPluginMessageListener);
+    throw RuError.new(
+      'Cannot load plugin',
+      'Не удалось подключиться к CryptoPro Extension for CAdES Browser plug-in',
+    );
   }
 }
 
 /**
  * Получить асинхронную версию cadesplugin, если он поддерживается
- *
- * @param cadesplugin
  */
-function canAsync(cadesplugin: CADESPlugin): cadesplugin is CADESPluginAsync {
-  return !!(cadesplugin as CADESPluginAsync).CreateObjectAsync;
+function canAsync(cadesPlugin: CADESPlugin): cadesPlugin is CADESPluginAsync {
+  return !!(cadesPlugin as CADESPluginAsync).CreateObjectAsync;
 }
 
 /**
@@ -57,6 +61,4 @@ function main() {
     : new DigitalSignatureSyncProvider(cadesplugin as CADESPluginSync);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  init();
-});
+init();

@@ -1,6 +1,10 @@
-import CertificateShortInfo from "./CertificateShortInfo";
-import CapicomCertInfoType from "./CapicomCertInfoType";
-import DigitalSignatureProvider from "./DigitalSignatureProvider";
+/* eslint-disable no-undef */
+
+import CertificateShortInfo from './CertificateShortInfo';
+import CapicomCertInfoType from './CapicomCertInfoType';
+import DigitalSignatureProvider from './DigitalSignatureProvider';
+import RuError from '../utils/RuError';
+import Base64File from '../utils/base64-file';
 
 type Store = CAPICOM.Store;
 type Certificates = CAPICOM.Certificates;
@@ -8,24 +12,35 @@ type Certificate = CAPICOM.Certificate;
 type CPSigner = CAdESCOM.CPSigner;
 type CadesSignedData = CAdESCOM.CadesSignedData;
 
+type FilterCertificate = (c: Certificate) => boolean;
+
 export default class DigitalSignatureSyncProvider extends DigitalSignatureProvider {
   public constructor(private readonly cadesplugin: CADESPluginSync) {
     super();
   }
 
   public async certificates(): Promise<CertificateShortInfo[]> {
+    return this.getCertificates(this.withValidDates);
+  }
+
+  public async certificatesWithAlgorithmGOST(): Promise<CertificateShortInfo[]> {
+    return this.getCertificates(this.withValidDates, this.withAlgorithmGOST);
+  }
+
+  private getCertificates(...filterCertificates: FilterCertificate[]): CertificateShortInfo[] {
     const store = this.store();
 
     try {
       this.openStore(store);
       return this.findAllCertificates(store)
-        .map(it => this.certificateShortInfo(it));
+        .filter((it) => filterCertificates.every((func) => func(it)))
+        .map((it) => this.certificateShortInfo(it));
     } finally {
       this.closeStore(store);
     }
   }
 
-  public async signCreate(thumbprint: string, file: File): Promise<File> {
+  public async signCreate(thumbprint: string, file: File, detached: boolean): Promise<File> {
     const store = this.store();
 
     try {
@@ -33,11 +48,12 @@ export default class DigitalSignatureSyncProvider extends DigitalSignatureProvid
 
       const certificate: Certificate = this.findCertificateByThumbprint(store, thumbprint);
       const signer: CPSigner = this.signer(certificate);
-      const signedContent = this.signContent(signer, await file.text());
+      const base64Content: string = await (await Base64File.encodeFile(file)).text();
+      const signedContent = this.signContent(signer, base64Content, detached);
 
       return new File([signedContent], `${file.name}.sig`);
     } finally {
-      await this.closeStore(store);
+      this.closeStore(store);
     }
   }
 
@@ -49,7 +65,7 @@ export default class DigitalSignatureSyncProvider extends DigitalSignatureProvid
     store.Open(
       this.cadesplugin.CAPICOM_CURRENT_USER_STORE,
       this.cadesplugin.CAPICOM_MY_STORE,
-      this.cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED
+      this.cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED,
     );
   }
 
@@ -71,9 +87,15 @@ export default class DigitalSignatureSyncProvider extends DigitalSignatureProvid
     const certificates: Certificates = store.Certificates.Find(CAPICOM_CERTIFICATE_FIND_SHA1_HASH, thumbprint);
 
     if (certificates.Count === 0) {
-      throw new TypeError(`Сертификат "${thumbprint}" не найден`);
+      throw RuError.new(
+        `Certificate "${thumbprint}" is not found`,
+        `Сертификат "${thumbprint}" is not found`,
+      );
     } else if (certificates.Count > 1) {
-      throw new TypeError(`Найдено более одного сертификата "${thumbprint}"`);
+      throw RuError.new(
+        `More than one certificate "${thumbprint}" found`,
+        `Найдено более одного сертификата "${thumbprint}"`,
+      );
     }
 
     return certificates.Item(1);
@@ -95,8 +117,8 @@ export default class DigitalSignatureSyncProvider extends DigitalSignatureProvid
       issuerSimpleName: cert.GetInfo(this.infoType(CapicomCertInfoType.CAPICOM_CERT_INFO_ISSUER_SIMPLE_NAME)),
       issuerEmailName: cert.GetInfo(this.infoType(CapicomCertInfoType.CAPICOM_CERT_INFO_ISSUER_EMAIL_NAME)),
       issuerUpn: cert.GetInfo(this.infoType(CapicomCertInfoType.CAPICOM_CERT_INFO_ISSUER_UPN)),
-      issuerDnsName: cert.GetInfo(this.infoType(CapicomCertInfoType.CAPICOM_CERT_INFO_ISSUER_DNS_NAME))
-    }
+      issuerDnsName: cert.GetInfo(this.infoType(CapicomCertInfoType.CAPICOM_CERT_INFO_ISSUER_DNS_NAME)),
+    };
   }
 
   private infoType(infoType: any): CAPICOM.CAPICOM_CERT_INFO_TYPE {
@@ -106,7 +128,7 @@ export default class DigitalSignatureSyncProvider extends DigitalSignatureProvid
   private signer(certificate: Certificate): CPSigner {
     const signer: CPSigner = this.cadesplugin.CreateObject('CAdESCOM.CPSigner');
 
-    const signingTimeAttr: CAdESCOM.CPAttribute = this.cadesplugin.CreateObject("CAdESCOM.CPAttribute");
+    const signingTimeAttr: CAdESCOM.CPAttribute = this.cadesplugin.CreateObject('CAdESCOM.CPAttribute');
     signingTimeAttr.Name = this.cadesplugin.CAPICOM_AUTHENTICATED_ATTRIBUTE_SIGNING_TIME;
     signingTimeAttr.Value = new Date();
     // @ts-ignore
@@ -118,12 +140,30 @@ export default class DigitalSignatureSyncProvider extends DigitalSignatureProvid
     return signer;
   }
 
-  private signContent(signer: CPSigner, content: string): string {
+  private signContent(signer: CPSigner, base64Content: string, detached: boolean): string {
     const signedData: CadesSignedData = this.cadesplugin.CreateObject('CAdESCOM.CadesSignedData');
     signedData.ContentEncoding = this.cadesplugin.CADESCOM_BASE64_TO_BINARY;
-    signedData.Content = btoa(content);
+    signedData.Content = base64Content;
 
-    const detached = false;
     return signedData.SignCades(signer, this.cadesplugin.CADESCOM_CADES_BES, detached);
+  }
+
+  private withAlgorithmGOST(certificate: Certificate): boolean {
+    const algorithmId: string = certificate.PublicKey().Algorithm.Value;
+
+    // алгоритм подписи ГОСТ Р 34.10-2012 с ключом 256 бит
+    const ALGORITHM_GOST = '1.2.643.7.1.1.1.1';
+    return algorithmId === ALGORITHM_GOST;
+  }
+
+  private withValidDates(certificate: Certificate): boolean {
+    const validFromDate: any = certificate.ValidFromDate;
+    const validToDate: any = certificate.ValidToDate;
+
+    const now: number = Date.now();
+    const validFromDateMs: number = new Date(validFromDate).getTime();
+    const validToDateMs: number = new Date(validToDate).getTime();
+
+    return validFromDateMs <= now && now <= validToDateMs;
   }
 }

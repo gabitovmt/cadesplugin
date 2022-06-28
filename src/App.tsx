@@ -12,7 +12,7 @@ function App() {
   const sourceFileChangeHandler = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files != null && event.target.files.length === 1) {
       setSourceFile(event.target.files[0]);
-      const certList = await DigitalSignatureProvider.new().certificates();
+      const certList = await (await DigitalSignatureProvider.new()).certificates();
       setCertificates(certList);
       certList.length && setChosenCertificate(certList[0].thumbprint);
     } else {
@@ -30,7 +30,13 @@ function App() {
       return;
     }
 
-    const file: File = await DigitalSignatureProvider.new().signCreate(chosenCertificate, sourceFile);
+    const file: File = await (await DigitalSignatureProvider.new()).signCreateExtended({
+      thumbprint: chosenCertificate,
+      file: sourceFile,
+      isDetached: true,
+      isZip: false,
+      isBase64: true
+    });
     FileSaver.saveAs(file);
   }
 
